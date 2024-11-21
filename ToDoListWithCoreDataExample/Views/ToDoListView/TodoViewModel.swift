@@ -10,17 +10,17 @@ import CoreData
 
 class TodoViewModel: ObservableObject {
   @Published var tasks: [ToDoListItemEntity] = []
-  private let coreDataManager: CoreDataManagerProtocol
+  private let coreDataManager = CoreDataManager.shared
   private var cancellables = Set<AnyCancellable>()
   
-  init(coreDataManager: CoreDataManagerProtocol) {
-    self.coreDataManager = coreDataManager
+  init() {
     fetchTasks()
     setupSubscriptions()
   }
   
   private func setupSubscriptions() {
     coreDataManager.objectWillChange
+      .receive(on: DispatchQueue.main)
       .sink { [weak self] changes in
         self?.handleCoreDataChanges(inserted: changes.inserted, updated: changes.updated, deleted: changes.deleted)
       }

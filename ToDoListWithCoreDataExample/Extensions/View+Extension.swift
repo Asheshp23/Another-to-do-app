@@ -1,3 +1,12 @@
+//
+//  View+Extension.swift
+//  ToDoListWithCoreDataExample
+//
+//  Created by Ashesh Patel on 2024-11-20.
+//
+import Foundation
+import SwiftUICore
+
 extension View {
   func neumorphicShadow() -> some View {
     self
