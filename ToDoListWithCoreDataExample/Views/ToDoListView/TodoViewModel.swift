@@ -51,7 +51,7 @@ class TodoViewModel: ObservableObject {
   
   private func fetchTasks() {
     let sortDescriptor = NSSortDescriptor(keyPath: \ToDoListItemEntity.dueDate, ascending: true)
-    tasks = coreDataManager.fetch(ToDoListItemEntity.self, predicate: nil, sortDescriptors: [sortDescriptor])
+    tasks = coreDataManager.fetch(predicate: nil, sortDescriptors: [sortDescriptor])
   }
   
   func addTask(title: String, priority: Int16, dueDate: Date) {
