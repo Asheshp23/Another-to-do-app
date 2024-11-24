@@ -8,16 +8,20 @@ import Foundation
 import Combine
 import CoreData
 
+@MainActor
 class TodoViewModel: ObservableObject {
   @Published var tasks: [ToDoListItemEntity] = []
   private let coreDataManager = CoreDataManager.shared
   private var cancellables = Set<AnyCancellable>()
   
   init() {
-    fetchTasks()
-    setupSubscriptions()
+    Task {
+      fetchTasks()
+      setupSubscriptions()
+    }
   }
   
+  @MainActor
   private func setupSubscriptions() {
     coreDataManager.objectWillChange
       .receive(on: DispatchQueue.main)
@@ -49,12 +53,12 @@ class TodoViewModel: ObservableObject {
     tasks.sort { $0.dueDate ?? Date() < $1.dueDate ?? Date() }
   }
   
-  private func fetchTasks() {
+  @MainActor private func fetchTasks() {
     let sortDescriptor = NSSortDescriptor(keyPath: \ToDoListItemEntity.dueDate, ascending: true)
     tasks = coreDataManager.fetch(predicate: nil, sortDescriptors: [sortDescriptor])
   }
   
-  func addTask(title: String, priority: Int16, dueDate: Date) {
+  @MainActor func addTask(title: String, priority: Int16, dueDate: Date) {
     let newTask = ToDoListItemEntity(context: coreDataManager.viewContext)
     newTask.id = UUID()
     newTask.title = title
@@ -65,21 +69,21 @@ class TodoViewModel: ObservableObject {
     coreDataManager.saveContext()
   }
   
-  func updateTask(_ task: ToDoListItemEntity) {
+  @MainActor func updateTask(_ task: ToDoListItemEntity) {
     coreDataManager.saveContext()
   }
   
-  func updateTaskTitle(_ task: ToDoListItemEntity, newTitle: String) {
+  @MainActor func updateTaskTitle(_ task: ToDoListItemEntity, newTitle: String) {
     task.title = newTitle
     updateTask(task)
   }
   
-  func toggleTaskCompletion(_ task: ToDoListItemEntity) {
+  @MainActor func toggleTaskCompletion(_ task: ToDoListItemEntity) {
     task.isCompleted.toggle()
     updateTask(task)
   }
   
-  func deleteTask(_ task: ToDoListItemEntity) {
+  @MainActor func deleteTask(_ task: ToDoListItemEntity) {
     coreDataManager.viewContext.delete(task)
     coreDataManager.saveContext()
   }

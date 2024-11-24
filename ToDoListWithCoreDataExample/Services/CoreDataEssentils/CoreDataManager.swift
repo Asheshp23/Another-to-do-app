@@ -1,9 +1,3 @@
-//
-//  CoreDataManager.swift
-//  ToDoListWithCoreDataExample
-//
-//  Created by Ashesh Patel on 2024-11-20.
-//
 import CoreData
 import Combine
 
@@ -12,17 +6,18 @@ protocol CoreDataManagerProtocol {
   var objectWillChange: AnyPublisher<(inserted: Set<NSManagedObject>, updated: Set<NSManagedObject>, deleted: Set<NSManagedObject>), Never> { get }
   func saveContext()
   func fetch<T: NSManagedObject>(predicate: NSPredicate?, sortDescriptors: [NSSortDescriptor]?) -> [T]
-  func fetchById<T: NSManagedObject>(id: UUID) throws -> T?
+  func fetchById<T: NSManagedObject>(id: UUID) async throws -> T?
 }
 
-class CoreDataManager: ObservableObject, CoreDataManagerProtocol {
-  static let shared = CoreDataManager()
+@MainActor
+final class CoreDataManager: @preconcurrency ObservableObject, @preconcurrency CoreDataManagerProtocol {
+  @MainActor static let shared = CoreDataManager()
   
   private let stack: CoreDataStack = CoreDataStack()
   private let observer: CoreDataObserverProtocol
   
   var viewContext: NSManagedObjectContext {
-    return stack.viewContext
+    stack.viewContext
   }
   
   init(observer: CoreDataObserverProtocol? = nil) {
@@ -30,38 +25,59 @@ class CoreDataManager: ObservableObject, CoreDataManagerProtocol {
   }
   
   var objectWillChange: AnyPublisher<(inserted: Set<NSManagedObject>, updated: Set<NSManagedObject>, deleted: Set<NSManagedObject>), Never> {
-    return observer.objectWillChange.eraseToAnyPublisher()
+    observer.objectWillChange.eraseToAnyPublisher()
   }
   
   func saveContext() {
-    stack.saveContext()
-  }
-  
-  func fetch<T: NSManagedObject>(predicate: NSPredicate? = nil, sortDescriptors: [NSSortDescriptor]? = nil) -> [T] {
-    let entityName = String(describing: T.self)
-    let request = NSFetchRequest<T>(entityName: entityName)
-    request.predicate = predicate
-    request.sortDescriptors = sortDescriptors
-    
-    do {
-      return try stack.viewContext.fetch(request)
-    } catch {
-      print("Error fetching \(entityName): \(error)")
-      return []
+    stack.viewContext.perform { [weak self] in
+      guard let self = self else { return }
+      do {
+        if self.stack.viewContext.hasChanges {
+          try self.stack.viewContext.save()
+        }
+      } catch {
+        print("Error saving context: \(error)")
+      }
     }
   }
   
-  func fetchById<T: NSManagedObject>(id: UUID) throws -> T? {
+  func fetch<T: NSManagedObject>(predicate: NSPredicate? = nil, sortDescriptors: [NSSortDescriptor]? = nil) -> [T] {
+    var results: [T] = []
     let entityName = String(describing: T.self)
-    let request = NSFetchRequest<T>(entityName: entityName)
-    request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
     
-    do {
-      let result = try stack.viewContext.fetch(request)
-      return result.first
-    } catch {
-      print("Error fetching \(entityName) by id \(id): \(error)")
-      throw error
+    stack.viewContext.performAndWait {
+      let request = NSFetchRequest<T>(entityName: entityName)
+      request.predicate = predicate
+      request.sortDescriptors = sortDescriptors
+      
+      do {
+        results = try stack.viewContext.fetch(request)
+      } catch {
+        print("Error fetching \(entityName): \(error)")
+      }
+    }
+    
+    return results
+  }
+  
+  func fetchById<T: NSManagedObject>(id: UUID) async throws -> T? {
+    stack.viewContext.performAndWait {
+      let entityName = String(describing: T.self)
+      let request = NSFetchRequest<T>(entityName: entityName)
+      request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+      request.fetchLimit = 1
+      do {
+        // Fetch result
+        guard let result = try self.stack.viewContext.fetch(request).first else {
+          return nil // No result found
+        }
+        return result
+        // Convert the object into a fault-safe detached object or simply return the object safely
+        
+      } catch {
+        print("Error fetching \(entityName) by id \(id): \(error)")
+        return nil
+      }
     }
   }
 }

@@ -29,6 +29,9 @@ class CoreDataStack: CoreDataStackProtocol {
       }
     }
     
+    container.viewContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+    container.viewContext.automaticallyMergesChangesFromParent = true
+    
     return container
   }()
   

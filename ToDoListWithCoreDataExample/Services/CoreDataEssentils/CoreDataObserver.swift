@@ -1,9 +1,3 @@
-//
-//  CoreDataObserver.swift
-//  ToDoListWithCoreDataExample
-//
-//  Created by Ashesh Patel on 2024-11-20.
-//
 import CoreData
 import Combine
 
@@ -11,33 +5,32 @@ protocol CoreDataObserverProtocol {
   var objectWillChange: PassthroughSubject<(inserted: Set<NSManagedObject>, updated: Set<NSManagedObject>, deleted: Set<NSManagedObject>), Never> { get }
 }
 
-class CoreDataObserver: NSObject, CoreDataObserverProtocol {
+@Observable
+final class CoreDataObserver: CoreDataObserverProtocol {
   let objectWillChange = PassthroughSubject<(inserted: Set<NSManagedObject>, updated: Set<NSManagedObject>, deleted: Set<NSManagedObject>), Never>()
   
-  let context: NSManagedObjectContext
+  private let context: NSManagedObjectContext
+  private var cancellables: Set<AnyCancellable> = []
+  private let lockQueue = DispatchQueue(label: "CoreDataObserver.LockQueue", attributes: .concurrent)
   
   init(context: NSManagedObjectContext) {
     self.context = context
-    super.init()
-    setupNotificationObservers()
+    observeContextChanges()
   }
   
-  private func setupNotificationObservers() {
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(managedObjectContextObjectsDidChange),
-      name: NSManagedObjectContext.didChangeObjectsNotification,
-      object: context
-    )
-  }
-  
-  @objc private func managedObjectContextObjectsDidChange(notification: NSNotification) {
-    guard let userInfo = notification.userInfo else { return }
-    
-    let inserted = userInfo[NSInsertedObjectsKey] as? Set<NSManagedObject> ?? Set<NSManagedObject>()
-    let updated = userInfo[NSUpdatedObjectsKey] as? Set<NSManagedObject> ?? Set<NSManagedObject>()
-    let deleted = userInfo[NSDeletedObjectsKey] as? Set<NSManagedObject> ?? Set<NSManagedObject>()
-    
-    objectWillChange.send((inserted: inserted, updated: updated, deleted: deleted))
+  private func observeContextChanges() {
+    NotificationCenter.default.publisher(for: .NSManagedObjectContextObjectsDidChange, object: context)
+      .compactMap { notification -> (inserted: Set<NSManagedObject>, updated: Set<NSManagedObject>, deleted: Set<NSManagedObject>)? in
+        guard let userInfo = notification.userInfo else { return nil }
+        let inserted = userInfo[NSInsertedObjectsKey] as? Set<NSManagedObject> ?? Set()
+        let updated = userInfo[NSUpdatedObjectsKey] as? Set<NSManagedObject> ?? Set()
+        let deleted = userInfo[NSDeletedObjectsKey] as? Set<NSManagedObject> ?? Set()
+        return (inserted: inserted, updated: updated, deleted: deleted)
+      }
+      .receive(on: lockQueue)
+      .sink { [weak self] changes in
+        self?.objectWillChange.send(changes)
+      }
+      .store(in: &cancellables)
   }
 }
