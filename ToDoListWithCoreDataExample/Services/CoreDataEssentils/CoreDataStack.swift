@@ -13,27 +13,27 @@ protocol CoreDataStackProtocol {
   func saveContext()
 }
 
-class CoreDataStack: CoreDataStackProtocol {
-  lazy var persistentContainer: NSPersistentContainer = {
-    let container = NSPersistentContainer(name: "ToDoListCoreDataModel")
+final class CoreDataStack: CoreDataStackProtocol, Sendable {
+  let persistentContainer: NSPersistentContainer
+  
+  init() {
+    persistentContainer = NSPersistentContainer(name: "ToDoListCoreDataModel")
     
     let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).last?.appendingPathComponent("ToDoListCoreDataModel.sqlite")
     print(url?.path() ?? "no path")
     // Configure the persistent store
     let description = NSPersistentStoreDescription(url: url!)
-    container.persistentStoreDescriptions = [description]
+    persistentContainer.persistentStoreDescriptions = [description]
     
-    container.loadPersistentStores { storeDescription, error in
+    persistentContainer.loadPersistentStores { storeDescription, error in
       if let error = error {
         fatalError("Unresolved error \(error)")
       }
     }
     
-    container.viewContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
-    container.viewContext.automaticallyMergesChangesFromParent = true
-    
-    return container
-  }()
+    persistentContainer.viewContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+    persistentContainer.viewContext.automaticallyMergesChangesFromParent = true
+  }
   
   var viewContext: NSManagedObjectContext {
     return persistentContainer.viewContext

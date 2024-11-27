@@ -21,11 +21,6 @@ struct NeumorphicNavBar: View {
         .foregroundColor(.primary)
       
       Spacer()
-      
-      // Right button (Add)
-      NeumorphicButton(systemImage: "plus") {
-        rightAction()
-      }
     }
     .padding()
     .background(Color(UIColor.systemBackground).edgesIgnoringSafeArea(.top))

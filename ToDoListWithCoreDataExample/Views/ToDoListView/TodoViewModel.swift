@@ -4,87 +4,121 @@
 //
 //  Created by Ashesh Patel on 2024-11-05.
 //
-import Foundation
 import Combine
+import SwiftUI
 import CoreData
 
-@MainActor
-class TodoViewModel: ObservableObject {
-  @Published var tasks: [ToDoListItemEntity] = []
-  private let coreDataManager = CoreDataManager.shared
+final class TodoViewModel: ObservableObject {
+  @Published private(set) var tasks: [ToDoListItemEntity] = []
+  
+  private let coreDataManager: CoreDataManager = CoreDataManager(stack: PersistenceController())
   private var cancellables = Set<AnyCancellable>()
   
   init() {
-    Task {
-      fetchTasks()
-      setupSubscriptions()
-    }
+    fetchInitialTasks()
+    setupCoreDataObservation()
   }
   
-  @MainActor
-  private func setupSubscriptions() {
-    coreDataManager.objectWillChange
+  /// Fetches tasks from Core Data on initialization
+  private func fetchInitialTasks() {
+    do {
+      let sortDescriptor = NSSortDescriptor(keyPath: \ToDoListItemEntity.dueDate, ascending: true)
+      let fetchedTasks: [ToDoListItemEntity] = try coreDataManager.fetch(
+        predicate: nil,
+        sortDescriptors: [sortDescriptor]
+      )
+      tasks = fetchedTasks
+    } catch {
+      print("Failed to fetch initial tasks: \(error.localizedDescription)")
+    }
+  }
+ 
+  /// Observes Core Data changes and updates the tasks array
+  private func setupCoreDataObservation() {
+    NotificationCenter.default
+      .publisher(for: .NSManagedObjectContextObjectsDidChange, object: coreDataManager.viewContext)
       .receive(on: DispatchQueue.main)
-      .sink { [weak self] changes in
-        self?.handleCoreDataChanges(inserted: changes.inserted, updated: changes.updated, deleted: changes.deleted)
+      .sink { [weak self] notification in
+        guard let self = self else { return }
+        self.handleCoreDataChanges(notification: notification)
       }
       .store(in: &cancellables)
   }
   
-  private func handleCoreDataChanges(inserted: Set<NSManagedObject>, updated: Set<NSManagedObject>, deleted: Set<NSManagedObject>) {
-    // Handle inserted tasks
-    for case let task as ToDoListItemEntity in inserted {
-      tasks.append(task)
-    }
+  /// Handles changes in Core Data
+  private func handleCoreDataChanges(notification: Notification) {
+    guard let userInfo = notification.userInfo else { return }
     
-    // Handle updated tasks
-    for case let task as ToDoListItemEntity in updated {
-      if let index = tasks.firstIndex(where: { $0.id == task.id }) {
-        tasks[index] = task
+    let insertedTasks = userInfo[NSInsertedObjectsKey] as? Set<NSManagedObject> ?? []
+    let updatedTasks = userInfo[NSUpdatedObjectsKey] as? Set<NSManagedObject> ?? []
+    let deletedTasks = userInfo[NSDeletedObjectsKey] as? Set<NSManagedObject> ?? []
+    
+    // Filter changes for ToDoListItemEntity only
+    let inserted = insertedTasks.compactMap { $0 as? ToDoListItemEntity }
+    let updated = updatedTasks.compactMap { $0 as? ToDoListItemEntity }
+    let deletedIDs = deletedTasks.compactMap { ($0 as? ToDoListItemEntity)?.id }
+    
+    // Update tasks list
+    var currentTasks = tasks
+    currentTasks.removeAll { task in deletedIDs.contains(task.id) }
+    currentTasks += inserted
+    
+    for task in updated {
+      if let index = currentTasks.firstIndex(where: { $0.id == task.id }) {
+        currentTasks[index] = task
       }
     }
     
-    // Handle deleted tasks
-    for case let task as ToDoListItemEntity in deleted {
-      tasks.removeAll { $0.id == task.id }
+    // Sort tasks and update published property
+    tasks = currentTasks.sorted { ($0.dueDate ?? Date.distantPast) < ($1.dueDate ?? Date.distantPast) }
+  }
+  
+  /// Adds a new task
+  @MainActor
+  func addTask(title: String, priority: Int16, dueDate: Date) {
+    do {
+      let task = ToDoListItemEntity(context: coreDataManager.viewContext)
+      task.id = UUID()
+      task.title = title
+      task.priority = priority
+      task.dueDate = dueDate
+      task.isCompleted = false
+      try coreDataManager.saveContext()
+    } catch {
+      print("Failed to add task: \(error.localizedDescription)")
     }
-    
-    // Sort tasks if needed
-    tasks.sort { $0.dueDate ?? Date() < $1.dueDate ?? Date() }
   }
   
-  @MainActor private func fetchTasks() {
-    let sortDescriptor = NSSortDescriptor(keyPath: \ToDoListItemEntity.dueDate, ascending: true)
-    tasks = coreDataManager.fetch(predicate: nil, sortDescriptors: [sortDescriptor])
+  /// Updates a task's title
+  @MainActor
+  func updateTaskTitle(_ task: ToDoListItemEntity, newTitle: String) {
+    do {
+      task.title = newTitle
+      try coreDataManager.saveContext()
+    } catch {
+      print("Failed to update task title: \(error.localizedDescription)")
+    }
   }
   
-  @MainActor func addTask(title: String, priority: Int16, dueDate: Date) {
-    let newTask = ToDoListItemEntity(context: coreDataManager.viewContext)
-    newTask.id = UUID()
-    newTask.title = title
-    newTask.priority = priority
-    newTask.dueDate = dueDate
-    newTask.isCompleted = false
-    
-    coreDataManager.saveContext()
+  /// Toggles a task's completion status
+  @MainActor
+  func toggleTaskCompletion(_ task: ToDoListItemEntity) {
+    do {
+      task.isCompleted.toggle()
+      try coreDataManager.saveContext()
+    } catch {
+      print("Failed to toggle task completion: \(error.localizedDescription)")
+    }
   }
   
-  @MainActor func updateTask(_ task: ToDoListItemEntity) {
-    coreDataManager.saveContext()
-  }
-  
-  @MainActor func updateTaskTitle(_ task: ToDoListItemEntity, newTitle: String) {
-    task.title = newTitle
-    updateTask(task)
-  }
-  
-  @MainActor func toggleTaskCompletion(_ task: ToDoListItemEntity) {
-    task.isCompleted.toggle()
-    updateTask(task)
-  }
-  
-  @MainActor func deleteTask(_ task: ToDoListItemEntity) {
-    coreDataManager.viewContext.delete(task)
-    coreDataManager.saveContext()
+  /// Deletes a task
+  @MainActor
+  func deleteTask(_ task: ToDoListItemEntity) {
+    do {
+      coreDataManager.viewContext.delete(task)
+      try coreDataManager.saveContext()
+    } catch {
+      print("Failed to delete task: \(error.localizedDescription)")
+    }
   }
 }

@@ -5,7 +5,6 @@ protocol CoreDataObserverProtocol {
   var objectWillChange: PassthroughSubject<(inserted: Set<NSManagedObject>, updated: Set<NSManagedObject>, deleted: Set<NSManagedObject>), Never> { get }
 }
 
-@Observable
 final class CoreDataObserver: CoreDataObserverProtocol {
   let objectWillChange = PassthroughSubject<(inserted: Set<NSManagedObject>, updated: Set<NSManagedObject>, deleted: Set<NSManagedObject>), Never>()
   

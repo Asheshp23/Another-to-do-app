@@ -44,10 +44,9 @@ struct NeumorphicPrioritySection: View {
   }
   
   private var priorityIcon: some View {
-    Image(systemName: priorityIconName)
+   Text(priorityIconName)
       .foregroundColor(.white)
       .frame(width: 40, height: 40)
-      .background(priorityColor)
       .cornerRadius(10)
   }
   
@@ -65,16 +64,16 @@ struct NeumorphicPrioritySection: View {
   }
   
   private var priorityIconName: String {
-    switch priority {
-    case 3...:
-      return "exclamationmark.3"
-    case 2:
-      return "exclamationmark.2"
-    case 1:
-      return "exclamationmark"
-    default:
-      return "minus"
-    }
+      switch priority {
+      case 3...:
+        return "🔥" // or "⚠️" or "‼️"
+      case 2:
+        return "⚡️" // or "❗️"
+      case 1:
+        return "❕" // or "⚪️"
+      default:
+        return "➖" // or "⚫️"
+      }
   }
   
   private var priorityColor: Color {
